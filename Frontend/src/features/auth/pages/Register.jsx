@@ -15,7 +15,7 @@ const Register = () => {
                 <h1>Register</h1>
                 <form onSubmit={handleSubmit}>
                     <div className="input-group">
-                        <label>User Name</label>
+                        <label>Username</label>
                         <input type="text" id="username" name="username" placeholder="Enter Username" />
                     </div>
                     <div className="input-group">
@@ -23,7 +23,7 @@ const Register = () => {
                         <input type="email" id="email" name="email" placeholder="Enter email address" />
                     </div>
                     <div className="input-group">
-                        <label>password</label>
+                        <label>Password</label>
                         <input type="password" id="password" name="password" placeholder="Enter password" />
                     </div>
 

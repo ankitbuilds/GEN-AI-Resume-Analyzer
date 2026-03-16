@@ -7,6 +7,8 @@
     cursor: pointer;
     transition: all 0.3s ease-in-out;
     &.primary-button{
+        width: 100%;
+        margin-top: 15px;
         background-color: #e1034d;
         color: white;
     }
