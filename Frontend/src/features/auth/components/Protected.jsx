@@ -1,9 +1,10 @@
 import React from 'react'
 import { useAuth } from '../hooks/useAuth'
-import { Navigate } from 'react-router'
+import { useNavigate, Navigate } from 'react-router'
 
-const Protected = () => {
+const Protected = ({children}) => {
     const { loading, user } = useAuth()
+    const navigate = useNavigate()
 
     if (loading) {
         return (<main><h1>Loading...</h1></main>)
