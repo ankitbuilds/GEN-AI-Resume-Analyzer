@@ -697,11 +697,33 @@ Job Description: ${jobDescription}`
 
 async function generatePdfFromHtml(htmlContent){
     try {
-        const browser = await puppeteer.launch()
-        const page = await browser.newPage();
-        await page.setContent(htmlContent, {waitUntil: "networkidle0"})
+        const browser = await puppeteer.launch({
+            headless: true,
+            args: [
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-accelerated-2d-canvas",
+                "--no-first-run",
+                "--no-zygote",
+                "--single-process",
+                "--disable-gpu"
+            ]
+        })
+        const page = await browser.newPage()
+        await page.setContent(htmlContent, { waitUntil: "networkidle0" })
+        await page.emulateMediaType("screen")
 
-        const pdfBuffer = await page.pdf({format: "A4"})
+        const pdfBuffer = await page.pdf({
+            format: "A4",
+            printBackground: true,
+            margin: {
+                top: "20px",
+                bottom: "20px",
+                left: "20px",
+                right: "20px"
+            }
+        })
 
         await browser.close()
         return pdfBuffer
