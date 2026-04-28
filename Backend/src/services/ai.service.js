@@ -691,100 +691,24 @@ Job Description: ${jobDescription}`
         return await generatePdfFromHtml(jsonContent.html)
     } catch (error) {
         console.error("generateResumePdf error:", error.message)
-        
-        // Fallback: Generate a simple HTML resume and convert to PDF
-        console.log("AI quota exceeded, using fallback resume template")
-        try {
-            const fallbackHtml = generateFallbackResumeHtml({resume, selfDescription, jobDescription})
-            console.log("Generated fallback HTML, converting to PDF...")
-            return await generatePdfFromHtml(fallbackHtml)
-        } catch (fallbackError) {
-            console.error("Fallback PDF generation also failed:", fallbackError.message)
-            throw fallbackError
-        }
+        throw error
     }
 }
 
 async function generatePdfFromHtml(htmlContent){
     try {
-        console.log("Launching Puppeteer browser...")
-        const browser = await puppeteer.launch({
-            headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
-        })
-        console.log("Browser launched, creating new page...")
+        const browser = await puppeteer.launch()
         const page = await browser.newPage();
-        console.log("Setting HTML content...")
         await page.setContent(htmlContent, {waitUntil: "networkidle0"})
-        console.log("Generating PDF...")
+
         const pdfBuffer = await page.pdf({format: "A4"})
-        console.log("PDF generated, closing browser...")
+
         await browser.close()
-        console.log("PDF generation completed successfully")
         return pdfBuffer
     } catch (error) {
         console.error("generatePdfFromHtml error:", error.message)
         throw error
     }
-}
-
-function generateFallbackResumeHtml({resume, selfDescription, jobDescription}) {
-    const name = "Your Name"
-    const email = "your.email@example.com"
-    const phone = "(555) 123-4567"
-    
-    // Extract some basic info from selfDescription
-    const experience = selfDescription ? selfDescription.split('.').slice(0, 3).join('. ') : "Professional with relevant experience"
-    const skills = jobDescription ? jobDescription.split(' ').filter(word => word.length > 3).slice(0, 5).join(', ') : "Various technical skills"
-
-    return `
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Resume</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }
-        .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 20px; margin-bottom: 30px; }
-        .name { font-size: 28px; font-weight: bold; margin-bottom: 10px; }
-        .contact { color: #666; margin-bottom: 20px; }
-        .section { margin-bottom: 25px; }
-        .section-title { font-size: 18px; font-weight: bold; color: #333; border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-bottom: 10px; }
-        .experience, .skills { margin-bottom: 15px; }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <div class="name">${name}</div>
-        <div class="contact">
-            ${email} | ${phone}
-        </div>
-    </div>
-    
-    <div class="section">
-        <div class="section-title">Professional Summary</div>
-        <p>${experience}</p>
-    </div>
-    
-    <div class="section">
-        <div class="section-title">Skills</div>
-        <p>${skills}</p>
-    </div>
-    
-    <div class="section">
-        <div class="section-title">Experience</div>
-        <div class="experience">
-            <p><strong>Professional Experience</strong></p>
-            <p>${experience}</p>
-        </div>
-    </div>
-    
-    <div class="section">
-        <div class="section-title">Education</div>
-        <p>Bachelor's Degree in Computer Science</p>
-    </div>
-</body>
-</html>`
 }
 
 module.exports = {generateInterviewReport, generateResumePdf}
