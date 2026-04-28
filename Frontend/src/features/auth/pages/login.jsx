@@ -2,6 +2,19 @@ import React, { useState } from 'react'
 import { useNavigate, Link } from 'react-router'
 import '../auth.form.scss'
 import { useAuth } from '../hooks/useauth'
+
+import axios from "axios";
+
+const API_URL = import.meta.env.VITE_API_URL;
+
+async function getReport(id) {
+  const res = await axios.get(`${API_URL}/api/interview/report/${id}`);
+  return res.data;
+}
+
+
+
+
 const Login = () => {
 
     const { loading, handleLogin } = useAuth()

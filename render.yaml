@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: genai-backend
+    env: node
+    plan: starter
+    region: oregon
+    buildCommand: cd Backend && npm install
+    startCommand: cd Backend && node server.js
+    envVars:
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: GOOGLE_GENAI_API_KEY
+        sync: false
+      - key: FRONTEND_URL
+        value: https://gen-ai-resume-analyzer.onrender.com
+      - key: NODE_ENV
+        value: production
+
+  - type: web
+    name: genai-frontend
+    env: static
+    plan: starter
+    region: oregon
+    buildCommand: cd Frontend && npm install && npm run build
+    staticPublishPath: Frontend/dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://genai-backend.onrender.com

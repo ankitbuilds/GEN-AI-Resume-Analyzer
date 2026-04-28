@@ -6,8 +6,16 @@ const app = express()
 
 app.use(express.json())
 app.use(cookieParser())
+
+// CORS configuration for both development and production
+const allowedOrigins = [
+    "http://localhost:5173",           // Local development
+    process.env.FRONTEND_URL,          // Render or other deployment URL
+    "https://gen-ai-resume-analyzer.onrender.com" // Default Render domain (replace with your actual domain)
+].filter(origin => origin) // Remove undefined entries
+
 app.use(cors({
-    origin: "http://localhost:5173",
+    origin: allowedOrigins,
     credentials: true
 }))
 
