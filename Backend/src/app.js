@@ -27,4 +27,28 @@ const interviewRouter = require("./routes/interview.routes")
 app.use("/api/auth", authRouter)
 app.use("/api/interview", interviewRouter)
 
+// Test route for Puppeteer
+app.get("/api/test-pdf", async (req, res) => {
+    try {
+        const puppeteer = require("puppeteer")
+        const browser = await puppeteer.launch({
+            headless: true,
+            args: ["--no-sandbox", "--disable-setuid-sandbox"]
+        })
+        const page = await browser.newPage()
+        await page.setContent("<h1>Test PDF</h1><p>This is a test.</p>")
+        const pdfBuffer = await page.pdf({ format: "A4" })
+        await browser.close()
+
+        res.set({
+            "Content-Type": "application/pdf",
+            "Content-Disposition": "attachment; filename=test.pdf"
+        })
+        res.send(pdfBuffer)
+    } catch (error) {
+        console.error("Puppeteer test failed:", error.message)
+        res.status(500).json({ error: error.message })
+    }
+})
+
 module.exports = app

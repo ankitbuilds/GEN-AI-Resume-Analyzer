@@ -1,5 +1,5 @@
 const pdfParse = require('pdf-parse')
-const {generateInterviewReport, generateResumePdf} = require("../services/ai.service")
+const {generateInterviewReport, generateResumePdf, generateFallbackResumeHtml} = require("../services/ai.service")
 const interviewReportModel = require("../models/interviewreport.model")
 
 
@@ -112,17 +112,16 @@ async function generateResumePdfController(req,res){
         let pdfBuffer;
         try {
             pdfBuffer = await generateResumePdf({resume, selfDescription, jobDescription})
-        } catch (pdfError) {
-            console.error("PDF generation failed, returning text fallback:", pdfError.message)
-            // Fallback: Return text content as downloadable file
-            const textContent = `Resume for Interview Report ${interviewReportId}\n\nJob Description:\n${jobDescription}\n\nSelf Description:\n${selfDescription}\n\nResume Content:\n${resume || 'No resume uploaded'}`
-            pdfBuffer = Buffer.from(textContent, 'utf-8')
-            
+        } catch (error) {
+            console.error("All PDF generation failed, returning HTML as fallback:", error.message)
+            // Final fallback: Return HTML content as downloadable file
+            const htmlContent = generateFallbackResumeHtml({resume, selfDescription, jobDescription})
+
             res.set({
-                "Content-Type": "text/plain",
-                "Content-Disposition": `attachment; filename=resume_${interviewReportId}.txt`
+                "Content-Type": "text/html",
+                "Content-Disposition": `attachment; filename=resume_${interviewReportId}.html`
             })
-            return res.send(pdfBuffer)
+            return res.send(htmlContent)
         }
 
         res.set({

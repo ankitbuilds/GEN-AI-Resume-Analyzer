@@ -678,6 +678,7 @@ Resume: ${resume}
 Self Description: ${selfDescription}
 Job Description: ${jobDescription}`
 
+        console.log("Generating resume HTML with AI...")
         const response = await ai.models.generateContent({
             model: "gemini-2.0-flash",
             contents: prompt,
@@ -688,10 +689,32 @@ Job Description: ${jobDescription}`
         })
 
         const jsonContent = JSON.parse(response.text)
-        return await generatePdfFromHtml(jsonContent.html)
+        console.log("AI HTML generated successfully, validating HTML...")
+
+        // Validate HTML content
+        if (!jsonContent.html || typeof jsonContent.html !== 'string') {
+            throw new Error("Invalid HTML content from AI")
+        }
+
+        // Ensure HTML has basic structure
+        let htmlContent = jsonContent.html.trim()
+        if (!htmlContent.includes('<html') && !htmlContent.includes('<!DOCTYPE')) {
+            htmlContent = `<!DOCTYPE html><html><head><title>Resume</title></head><body>${htmlContent}</body></html>`
+        }
+
+        console.log("HTML validated, converting to PDF...")
+        return await generatePdfFromHtml(htmlContent)
     } catch (error) {
         console.error("generateResumePdf error:", error.message)
-        throw error
+        console.log("Falling back to template HTML...")
+        // Fallback to template HTML
+        const fallbackHtml = generateFallbackResumeHtml({resume, selfDescription, jobDescription})
+        try {
+            return await generatePdfFromHtml(fallbackHtml)
+        } catch (pdfError) {
+            console.error("PDF generation failed even with fallback:", pdfError.message)
+            throw pdfError
+        }
     }
 }
 
@@ -725,12 +748,110 @@ async function generatePdfFromHtml(htmlContent){
             }
         })
 
+async function generatePdfFromHtml(htmlContent){
+    try {
+        console.log("Launching Puppeteer browser...")
+        const browser = await puppeteer.launch({
+            headless: true,
+            args: [
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-accelerated-2d-canvas",
+                "--no-first-run",
+                "--no-zygote",
+                "--single-process",
+                "--disable-gpu",
+                "--disable-web-security",
+                "--disable-features=VizDisplayCompositor"
+            ]
+        })
+        console.log("Browser launched, creating page...")
+        const page = await browser.newPage()
+
+        // Set viewport for better PDF rendering
+        await page.setViewport({ width: 1200, height: 800 })
+
+        // Validate HTML content
+        if (!htmlContent || htmlContent.trim().length === 0) {
+            throw new Error("HTML content is empty")
+        }
+
+        console.log("Setting page content...")
+        await page.setContent(htmlContent, {
+            waitUntil: "networkidle0",
+            timeout: 30000
+        })
+
+        console.log("Waiting for content to load...")
+        await page.waitForTimeout(2000) // Give extra time for rendering
+
+        console.log("Generating PDF...")
+        const pdfBuffer = await page.pdf({
+            format: "A4",
+            printBackground: true,
+            margin: {
+                top: "20px",
+                bottom: "20px",
+                left: "20px",
+                right: "20px"
+            },
+            preferCSSPageSize: false,
+            displayHeaderFooter: false
+        })
+
+        console.log("PDF generated successfully, closing browser...")
         await browser.close()
         return pdfBuffer
     } catch (error) {
         console.error("generatePdfFromHtml error:", error.message)
+        console.error("Error stack:", error.stack)
         throw error
     }
 }
 
-module.exports = {generateInterviewReport, generateResumePdf}
+function generateFallbackResumeHtml({resume, selfDescription, jobDescription}) {
+    // Create a very simple, guaranteed-to-work HTML
+    const safeResume = (resume || '').replace(/[<>]/g, '').substring(0, 1000)
+    const safeSelfDesc = (selfDescription || '').replace(/[<>]/g, '').substring(0, 500)
+    const safeJobDesc = (jobDescription || '').replace(/[<>]/g, '').substring(0, 500)
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Resume</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }
+        h1 { color: #333; border-bottom: 2px solid #333; padding-bottom: 10px; }
+        h2 { color: #666; margin-top: 30px; }
+        .section { margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+    <h1>Professional Resume</h1>
+
+    <div class="section">
+        <h2>Professional Summary</h2>
+        <p>${safeSelfDesc || 'Experienced professional with strong technical skills.'}</p>
+    </div>
+
+    <div class="section">
+        <h2>Target Position</h2>
+        <p><strong>Job Description:</strong> ${safeJobDesc || 'Seeking new opportunities.'}</p>
+    </div>
+
+    <div class="section">
+        <h2>Experience & Skills</h2>
+        <p>${safeResume || 'Professional experience and technical skills.'}</p>
+    </div>
+
+    <div class="section">
+        <h2>Education</h2>
+        <p>Bachelor's Degree in relevant field</p>
+    </div>
+</body>
+</html>`;
+}
+
+module.exports = {generateInterviewReport, generateResumePdf, generateFallbackResumeHtml}

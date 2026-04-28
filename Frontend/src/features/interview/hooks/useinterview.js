@@ -77,6 +77,9 @@ export const useInterview = () => {
                 if (contentType.includes('text/plain')) {
                     mimeType = 'text/plain'
                     fileExtension = 'txt'
+                } else if (contentType.includes('text/html')) {
+                    mimeType = 'text/html'
+                    fileExtension = 'html'
                 }
             }
             
