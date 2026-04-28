@@ -31,7 +31,7 @@ async function generateInterviewReportController(req, res) {
         })
 
         const interviewReport = await interviewReportModel.create({
-            user: req.user?.id || null, // Allow null for testing
+            user: req.user.id,
             resume: resumeContent,
             selfDescription,
             jobDescription,
@@ -80,7 +80,7 @@ async function getInterviewReportByIdController(req,res){
 // controller to get all interview reports to logged in user
 async function getAllInterviewReportsController(req,res){
     try {
-        const interviewReports = (await interviewReportModel.find({user:req.user.id})).toSorted({created:-1}).select("-resume -selfDescription -jobDescription -__v -technicalQuestions -behavioralQuestions -skillGaps -preparationPlan")
+        const interviewReports = await interviewReportModel.find({user:req.user.id}).sort({created:-1}).select("-resume -selfDescription -jobDescription -__v -technicalQuestions -behavioralQuestions -skillGaps -preparationPlan")
         res.status(200).json({
             message: "Interview reports fetched successfully",
             interviewReports
@@ -99,7 +99,7 @@ async function generateResumePdfController(req,res){
     try {
         const {interviewReportId} = req.params
 
-        const interviewReport = await interviewReportModel.findById(interviewReportId)
+        const interviewReport = await interviewReportModel.findOne({_id: interviewReportId, user: req.user.id})
 
         if(!interviewReport){
             return res.status(404).json({
@@ -109,7 +109,21 @@ async function generateResumePdfController(req,res){
 
         const {resume, jobDescription, selfDescription} = interviewReport
 
-        const pdfBuffer = await generateResumePdf({resume, jobDescription, selfDescription})
+        let pdfBuffer;
+        try {
+            pdfBuffer = await generateResumePdf({resume, selfDescription, jobDescription})
+        } catch (pdfError) {
+            console.error("PDF generation failed, returning text fallback:", pdfError.message)
+            // Fallback: Return text content as downloadable file
+            const textContent = `Resume for Interview Report ${interviewReportId}\n\nJob Description:\n${jobDescription}\n\nSelf Description:\n${selfDescription}\n\nResume Content:\n${resume || 'No resume uploaded'}`
+            pdfBuffer = Buffer.from(textContent, 'utf-8')
+            
+            res.set({
+                "Content-Type": "text/plain",
+                "Content-Disposition": `attachment; filename=resume_${interviewReportId}.txt`
+            })
+            return res.send(pdfBuffer)
+        }
 
         res.set({
             "Content-Type": "application/pdf",

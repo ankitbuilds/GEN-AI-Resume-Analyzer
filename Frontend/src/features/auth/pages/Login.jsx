@@ -9,11 +9,17 @@ const Login = () => {
     const [email, setEmail] = useState("")
     const [password, setPassword] = useState("")
 
+    const [ error, setError ] = useState("")
+
     const handleSubmit = async (e) => {
         e.preventDefault()
-        await handleLogin({ email, password })
-        navigate('/')
-
+        setError("")
+        try {
+            await handleLogin({ email, password })
+            navigate('/')
+        } catch (err) {
+            setError(err.response?.data?.message || "Login failed. Please check your credentials.")
+        }
     }
 
     if (loading) {
@@ -38,7 +44,7 @@ const Login = () => {
                     </div>
 
                     <button className="button primary-button" type="submit">Login</button>
-
+                    {error && <p className="form-error" style={{ color: 'red', marginTop: '12px' }}>{error}</p>}
                 </form>
 
                 <p>Don't have an account? <Link to={"/register"}>Register</Link></p>
