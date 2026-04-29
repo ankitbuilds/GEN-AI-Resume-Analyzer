@@ -1,7 +1,7 @@
 const { GoogleGenAI } = require("@google/genai")
 const { z } = require("zod")
 const { zodToJsonSchema } = require("zod-to-json-schema")
-const puppeteer = require("puppeteer")
+const PDFDocument = require("pdfkit")
 
 
 const ai = new GoogleGenAI({
@@ -669,89 +669,128 @@ Return only valid JSON with: matchScore (0-100), technicalQuestions (5+ with que
 
 async function generateResumePdf({resume, selfDescription, jobDescription}){
     try {
-        const html = generateFallbackResumeHtml({resume, selfDescription, jobDescription})
-        return await generatePdfFromHtml(html)
+        console.log("Starting PDF generation with PDFKit...")
+        const pdfBuffer = await generatePdfWithPdfkit({resume, selfDescription, jobDescription})
+        console.log("PDF generation completed, buffer size:", pdfBuffer.length)
+        return pdfBuffer
     } catch (error) {
         console.error("generateResumePdf error:", error.message)
         throw error
     }
 }
 
-async function generatePdfFromHtml(htmlContent){
-    console.log("Launching Puppeteer browser...")
-    const launchOptions = {
-        headless: true,
-        args: ["--no-sandbox", "--disable-setuid-sandbox"]
-    }
+function generatePdfWithPdfkit({resume, selfDescription, jobDescription}) {
+    return new Promise((resolve, reject) => {
+        try {
+            const doc = new PDFDocument({
+                size: "A4",
+                margins: { top: 50, bottom: 50, left: 50, right: 50 }
+            })
 
-    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
-        launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH
-    } else if (process.env.CHROME_PATH) {
-        launchOptions.executablePath = process.env.CHROME_PATH
-    }
+            const chunks = []
+            doc.on("data", (chunk) => chunks.push(chunk))
+            doc.on("end", () => {
+                const pdfBuffer = Buffer.concat(chunks)
+                resolve(pdfBuffer)
+            })
+            doc.on("error", (err) => reject(err))
 
-    console.log("Puppeteer launch options:", {
-        headless: launchOptions.headless,
-        executablePath: launchOptions.executablePath,
-        args: launchOptions.args
-    })
+            const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right
 
-    const browser = await puppeteer.launch(launchOptions)
-    try {
-        const page = await browser.newPage()
-        await page.setContent(htmlContent, { waitUntil: "networkidle0" })
+            // --- Header ---
+            doc.fontSize(24).font("Helvetica-Bold").fillColor("#1a1a2e")
+               .text("Professional Resume", { align: "center" })
+            doc.moveDown(0.3)
 
-        await new Promise(resolve => setTimeout(resolve, 1000))
+            // Header underline
+            const lineY = doc.y
+            doc.moveTo(doc.page.margins.left, lineY)
+               .lineTo(doc.page.margins.left + pageWidth, lineY)
+               .strokeColor("#1a1a2e").lineWidth(2).stroke()
+            doc.moveDown(1)
 
-        console.log("Generating PDF...")
-        const rawPdf = await page.pdf({
-            format: "A4",
-            printBackground: true,
-            margin: {
-                top: "1cm",
-                bottom: "1cm",
-                left: "1cm",
-                right: "1cm"
+            // --- Professional Summary ---
+            const summaryText = selfDescription || "Experienced professional with strong technical skills."
+            drawSectionHeader(doc, "Professional Summary", pageWidth)
+            doc.fontSize(11).font("Helvetica").fillColor("#333333")
+               .text(summaryText, { align: "left", lineGap: 4 })
+            doc.moveDown(1)
+
+            // --- Target Position ---
+            if (jobDescription) {
+                drawSectionHeader(doc, "Target Position", pageWidth)
+                doc.fontSize(11).font("Helvetica").fillColor("#333333")
+                   .text(jobDescription, { align: "left", lineGap: 4 })
+                doc.moveDown(1)
             }
-        })
 
-        const pdfBuffer = Buffer.isBuffer(rawPdf) ? rawPdf : Buffer.from(rawPdf)
+            // --- Experience & Skills ---
+            const resumeText = resume || "Professional experience and technical skills."
+            drawSectionHeader(doc, "Experience & Skills", pageWidth)
 
-        // Validate PDF buffer
-        if (!pdfBuffer || pdfBuffer.length === 0) {
-            throw new Error("Generated PDF buffer is empty")
+            // Split resume into lines/paragraphs for better formatting
+            const resumeLines = resumeText.split(/\n+/).filter(line => line.trim())
+            for (const line of resumeLines) {
+                const trimmed = line.trim()
+                if (!trimmed) continue
+
+                // Check if we need a new page
+                if (doc.y > doc.page.height - 80) {
+                    doc.addPage()
+                }
+
+                // Detect section-like headings (all caps or ending with colon)
+                if (/^[A-Z\s&,/]+$/.test(trimmed) && trimmed.length < 60) {
+                    doc.moveDown(0.5)
+                    doc.fontSize(12).font("Helvetica-Bold").fillColor("#1a1a2e")
+                       .text(trimmed)
+                    doc.moveDown(0.2)
+                } else if (trimmed.endsWith(":")) {
+                    doc.moveDown(0.3)
+                    doc.fontSize(11).font("Helvetica-Bold").fillColor("#444444")
+                       .text(trimmed)
+                } else {
+                    doc.fontSize(10).font("Helvetica").fillColor("#333333")
+                       .text(trimmed, { lineGap: 3 })
+                }
+            }
+
+            // --- Footer ---
+            doc.moveDown(2)
+            const footerY = doc.y
+            if (footerY < doc.page.height - 60) {
+                doc.moveTo(doc.page.margins.left, footerY)
+                   .lineTo(doc.page.margins.left + pageWidth, footerY)
+                   .strokeColor("#cccccc").lineWidth(0.5).stroke()
+                doc.moveDown(0.5)
+                doc.fontSize(8).font("Helvetica").fillColor("#999999")
+                   .text("Generated by AI Resume Analyzer", { align: "center" })
+            }
+
+            doc.end()
+        } catch (err) {
+            reject(err)
         }
+    })
+}
 
-        console.log(`PDF buffer size: ${pdfBuffer.length} bytes`)
-        console.log("PDF buffer is Buffer:", Buffer.isBuffer(pdfBuffer))
-        console.log("PDF header bytes:", pdfBuffer.slice(0, 10).toJSON())
-        const pdfHeader = pdfBuffer.toString('ascii', 0, 5)
-        console.log("PDF header:", pdfHeader)
-        if (!pdfHeader.startsWith('%PDF-')) {
-            console.error("Generated PDF does not have valid PDF header")
-            throw new Error("Generated PDF is not valid")
-        }
-
-        return pdfBuffer
-    } finally {
-        await browser.close().catch(err => {
-            console.error("Error closing Puppeteer browser:", err.message)
-        })
-    }
+function drawSectionHeader(doc, title, pageWidth) {
+    doc.fontSize(14).font("Helvetica-Bold").fillColor("#1a1a2e")
+       .text(title)
+    doc.moveDown(0.1)
+    const y = doc.y
+    doc.moveTo(doc.page.margins.left, y)
+       .lineTo(doc.page.margins.left + pageWidth, y)
+       .strokeColor("#4a4a8a").lineWidth(1).stroke()
+    doc.moveDown(0.5)
 }
 
 function generateFallbackResumeHtml({resume, selfDescription, jobDescription}) {
-    // Create a very simple, guaranteed-to-work HTML
     const safeResume = (resume || '').replace(/[<>]/g, '').substring(0, 1000)
     const safeSelfDesc = (selfDescription || '').replace(/[<>]/g, '').substring(0, 500)
     const safeJobDesc = (jobDescription || '').replace(/[<>]/g, '').substring(0, 500)
 
-    console.log("Generating fallback HTML with data:")
-    console.log("Resume:", safeResume)
-    console.log("Self desc:", safeSelfDesc)
-    console.log("Job desc:", safeJobDesc)
-
-    const html = `<!DOCTYPE html>
+    return `<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
@@ -765,32 +804,20 @@ function generateFallbackResumeHtml({resume, selfDescription, jobDescription}) {
 </head>
 <body>
     <h1>Professional Resume</h1>
-
     <div class="section">
         <h2>Professional Summary</h2>
         <p>${safeSelfDesc || 'Experienced professional with strong technical skills.'}</p>
     </div>
-
     <div class="section">
         <h2>Target Position</h2>
         <p><strong>Job Description:</strong> ${safeJobDesc || 'Seeking new opportunities.'}</p>
     </div>
-
     <div class="section">
         <h2>Experience & Skills</h2>
         <p>${safeResume || 'Professional experience and technical skills.'}</p>
     </div>
-
-    <div class="section">
-        <h2>Education</h2>
-        <p>Bachelor's Degree in relevant field</p>
-    </div>
 </body>
-</html>`;
-
-    console.log("Generated HTML length:", html.length)
-    console.log("HTML preview:", html.substring(0, 300))
-    return html
+</html>`
 }
 
 module.exports = {generateInterviewReport, generateResumePdf, generateFallbackResumeHtml}
