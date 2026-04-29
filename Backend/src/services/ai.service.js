@@ -697,10 +697,12 @@ function generatePdfWithPdfkit({resume, selfDescription, jobDescription}) {
 
             const leftMargin = doc.page.margins.left
             const pageWidth = doc.page.width - leftMargin - doc.page.margins.right
-            const resumeText = resume || ""
+            const resumeText = (resume || "").trim()
 
             // --- Parse resume into sections ---
             const parsed = parseResumeText(resumeText, selfDescription)
+
+            console.log("Parsed resume - name:", parsed.name, "sections:", Object.keys(parsed.sections), "contactLine:", parsed.contactLine ? "present" : "empty")
 
             // ==================== HEADER ====================
             // Name
@@ -717,6 +719,7 @@ function generatePdfWithPdfkit({resume, selfDescription, jobDescription}) {
 
             // ==================== SECTIONS ====================
             const sectionOrder = [
+                "Professional Summary",
                 "Education",
                 "Technical Skills",
                 "Professional Experience",
@@ -725,10 +728,13 @@ function generatePdfWithPdfkit({resume, selfDescription, jobDescription}) {
                 "Achievements"
             ]
 
+            let renderedAny = false
+
             for (const sectionName of sectionOrder) {
                 const section = parsed.sections[sectionName]
                 if (!section || section.length === 0) continue
 
+                renderedAny = true
                 checkPageBreak(doc, 60)
 
                 // Section header with line
@@ -746,6 +752,9 @@ function generatePdfWithPdfkit({resume, selfDescription, jobDescription}) {
                     renderCertificationsSection(doc, section, leftMargin, pageWidth)
                 } else if (sectionName === "Achievements") {
                     renderBulletList(doc, section, leftMargin, pageWidth)
+                } else {
+                    // Professional Summary and any others
+                    renderBulletList(doc, section, leftMargin, pageWidth)
                 }
             }
 
@@ -754,9 +763,38 @@ function generatePdfWithPdfkit({resume, selfDescription, jobDescription}) {
                 if (sectionOrder.includes(name)) continue
                 if (!content || content.length === 0) continue
 
+                renderedAny = true
                 checkPageBreak(doc, 60)
                 drawSectionHeader(doc, name, pageWidth, leftMargin)
                 renderBulletList(doc, content, leftMargin, pageWidth)
+            }
+
+            // FALLBACK: If nothing was rendered, show selfDescription and jobDescription directly
+            if (!renderedAny) {
+                console.log("No sections parsed, using fallback rendering")
+                if (selfDescription) {
+                    drawSectionHeader(doc, "Professional Summary", pageWidth, leftMargin)
+                    doc.fontSize(10).font("Helvetica").fillColor("#000000")
+                       .text(selfDescription, leftMargin, doc.y, { width: pageWidth, lineGap: 3 })
+                    doc.moveDown(0.8)
+                }
+                if (jobDescription) {
+                    drawSectionHeader(doc, "Target Position", pageWidth, leftMargin)
+                    doc.fontSize(10).font("Helvetica").fillColor("#000000")
+                       .text(jobDescription, leftMargin, doc.y, { width: pageWidth, lineGap: 3 })
+                    doc.moveDown(0.8)
+                }
+                if (resumeText) {
+                    drawSectionHeader(doc, "Resume Content", pageWidth, leftMargin)
+                    // Render all resume text line by line
+                    const allLines = resumeText.split(/\n/).filter(l => l.trim())
+                    for (const line of allLines) {
+                        checkPageBreak(doc, 20)
+                        doc.fontSize(10).font("Helvetica").fillColor("#000000")
+                           .text(line.trim(), leftMargin, doc.y, { width: pageWidth, lineGap: 2 })
+                    }
+                    doc.moveDown(0.8)
+                }
             }
 
             doc.end()
@@ -769,13 +807,15 @@ function generatePdfWithPdfkit({resume, selfDescription, jobDescription}) {
 // ==================== RESUME TEXT PARSER ====================
 function parseResumeText(resumeText, selfDescription) {
     const lines = resumeText.split(/\n/).map(l => l.trimEnd())
+    const nonEmptyLines = lines.filter(l => l.trim().length > 0)
     const result = {
         name: "",
         contactLine: "",
         sections: {}
     }
 
-    if (lines.length === 0) {
+    // Handle empty resume
+    if (nonEmptyLines.length === 0) {
         result.name = "Professional Resume"
         if (selfDescription) {
             result.sections["Professional Summary"] = [selfDescription]
@@ -795,7 +835,6 @@ function parseResumeText(resumeText, selfDescription) {
             break
         }
         if (isContactInfo(line)) {
-            // Name might not exist; the first line is contact
             break
         }
     }
@@ -814,16 +853,6 @@ function parseResumeText(resumeText, selfDescription) {
     }
     result.contactLine = contactParts.join("  |  ")
 
-    // Parse sections
-    const knownHeaders = [
-        "education", "technical skills", "skills", "professional experience",
-        "experience", "work experience", "certifications", "certification",
-        "projects", "achievements", "accomplishments", "summary",
-        "professional summary", "objective", "interests", "hobbies",
-        "languages", "references", "awards", "publications",
-        "volunteer", "volunteer experience", "training"
-    ]
-
     let currentSection = null
     let currentContent = []
 
@@ -836,7 +865,6 @@ function parseResumeText(resumeText, selfDescription) {
         if (lower.includes("project")) return "Projects"
         if (lower.includes("achievement") || lower.includes("accomplishment") || lower.includes("award")) return "Achievements"
         if (lower.includes("summary") || lower.includes("objective")) return "Professional Summary"
-        // Return the original name capitalized for unknown sections
         return name.trim()
     }
 
@@ -867,27 +895,34 @@ function parseResumeText(resumeText, selfDescription) {
         result.sections[normalized].push(...currentContent)
     }
 
-    // If no sections were parsed, put everything as a summary
+    // If no sections were parsed, split resume text into lines as general content
     if (Object.keys(result.sections).length === 0 && resumeText.trim()) {
-        result.sections["Professional Summary"] = [resumeText.trim()]
+        const contentLines = resumeText.split(/\n/).map(l => l.trim()).filter(l => l)
+        result.sections["Professional Summary"] = contentLines
     }
 
     return result
 }
 
 function isSectionHeader(line) {
-    const trimmed = line.trim()
-    // Common section headers - case insensitive match
+    // Clean the line: remove trailing colons, dashes, spaces, and special chars
+    const cleaned = line.trim().replace(/[\s:;\-–—]+$/g, "").trim()
+    if (!cleaned) return false
+
     const headers = [
-        /^education$/i, /^technical\s*skills$/i, /^skills$/i,
-        /^professional\s*experience$/i, /^experience$/i, /^work\s*experience$/i,
+        /^education$/i, /^technical\s+skills?$/i, /^skills?$/i,
+        /^professional\s+experience$/i, /^experience$/i, /^work\s+experience$/i,
         /^certifications?$/i, /^projects?$/i, /^achievements?$/i,
-        /^accomplishments?$/i, /^summary$/i, /^professional\s*summary$/i,
-        /^objective$/i, /^interests$/i, /^hobbies$/i, /^languages$/i,
-        /^references$/i, /^awards?$/i, /^publications?$/i,
-        /^volunteer(\s*experience)?$/i, /^training$/i
+        /^accomplishments?$/i, /^summary$/i, /^professional\s+summary$/i,
+        /^objective$/i, /^career\s+objective$/i,
+        /^interests?$/i, /^hobbies$/i, /^languages?$/i,
+        /^references?$/i, /^awards?$/i, /^publications?$/i,
+        /^volunteer(\s+experience)?$/i, /^training$/i,
+        /^personal\s+(details?|information|info)$/i,
+        /^core\s+competenc(ies|y)$/i, /^key\s+skills?$/i,
+        /^areas?\s+of\s+expertise$/i
     ]
-    return headers.some(regex => regex.test(trimmed))
+    return headers.some(regex => regex.test(cleaned))
 }
 
 function isContactInfo(line) {
