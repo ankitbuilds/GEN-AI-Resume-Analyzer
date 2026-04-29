@@ -680,21 +680,8 @@ async function generateResumePdf({resume, selfDescription, jobDescription}){
 async function generatePdfFromHtml(htmlContent){
     console.log("Launching Puppeteer browser...")
     const launchOptions = {
-        headless: 'new',
-        args: [
-            "--no-sandbox",
-            "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage",
-            "--disable-gpu",
-            "--single-process",
-            "--disable-extensions",
-            "--disable-background-networking",
-            "--disable-background-timer-throttling",
-            "--disable-client-side-phishing-detection",
-            "--disable-default-apps",
-            "--disable-popup-blocking"
-        ],
-        defaultViewport: { width: 1200, height: 800 }
+        headless: true,
+        args: ["--no-sandbox", "--disable-setuid-sandbox"]
     }
 
     if (process.env.PUPPETEER_EXECUTABLE_PATH) {
@@ -706,7 +693,7 @@ async function generatePdfFromHtml(htmlContent){
     console.log("Puppeteer launch options:", {
         headless: launchOptions.headless,
         executablePath: launchOptions.executablePath,
-        args: launchOptions.args.slice(0, 5)
+        args: launchOptions.args
     })
 
     const browser = await puppeteer.launch(launchOptions)
@@ -717,7 +704,7 @@ async function generatePdfFromHtml(htmlContent){
         await new Promise(resolve => setTimeout(resolve, 1000))
 
         console.log("Generating PDF...")
-        const pdfBuffer = await page.pdf({
+        const rawPdf = await page.pdf({
             format: "A4",
             printBackground: true,
             margin: {
@@ -728,12 +715,16 @@ async function generatePdfFromHtml(htmlContent){
             }
         })
 
+        const pdfBuffer = Buffer.isBuffer(rawPdf) ? rawPdf : Buffer.from(rawPdf)
+
         // Validate PDF buffer
         if (!pdfBuffer || pdfBuffer.length === 0) {
             throw new Error("Generated PDF buffer is empty")
         }
 
         console.log(`PDF buffer size: ${pdfBuffer.length} bytes`)
+        console.log("PDF buffer is Buffer:", Buffer.isBuffer(pdfBuffer))
+        console.log("PDF header bytes:", pdfBuffer.slice(0, 10).toJSON())
         const pdfHeader = pdfBuffer.toString('ascii', 0, 5)
         console.log("PDF header:", pdfHeader)
         if (!pdfHeader.startsWith('%PDF-')) {
