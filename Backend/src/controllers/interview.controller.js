@@ -124,18 +124,18 @@ async function generateResumePdfController(req,res){
             // Final fallback: Return HTML content as downloadable file
             const htmlContent = generateFallbackResumeHtml({resume, selfDescription, jobDescription})
              
-            res.set({
-                "Content-Type": "application/pdf",
-                "Content-Disposition": "attachment; filename=resume.pdf",
-                "Content-Length": pdfBuffer.length
-            })
-
-            res.end(pdfBuffer)
             // res.set({
-            //     "Content-Type": "text/html",
-            //     "Content-Disposition": `attachment; filename=resume_${interviewReportId}.html`
+            //     "Content-Type": "application/pdf",
+            //     "Content-Disposition": "attachment; filename=resume.pdf",
+            //     "Content-Length": pdfBuffer.length
             // })
-            // return res.send(htmlContent)
+
+            // res.end(pdfBuffer)
+            res.set({
+                "Content-Type": "text/html",
+                "Content-Disposition": `attachment; filename=resume_${interviewReportId}.html`
+            })
+            return res.send(htmlContent)
         }
 
         // Validate PDF buffer before sending
