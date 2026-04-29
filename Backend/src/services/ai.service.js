@@ -698,17 +698,55 @@ Job Description: ${jobDescription}`
 
         // Ensure HTML has basic structure
         let htmlContent = jsonContent.html.trim()
+
+        // Check if HTML is essentially empty
+        if (htmlContent.length < 10) {
+            console.warn("AI HTML is too short, using fallback")
+            htmlContent = generateFallbackResumeHtml({resume, selfDescription, jobDescription})
+        }
+
+        // Sanitize HTML - remove potentially problematic elements
+        htmlContent = htmlContent
+            .replace(/<script[^>]*>.*?<\/script>/gis, '') // Remove scripts
+            .replace(/<style[^>]*>.*?<\/style>/gis, '') // Remove inline styles that might conflict
+            .replace(/javascript:/gi, '') // Remove javascript: URLs
+            .replace(/on\w+="[^"]*"/gi, '') // Remove event handlers
+
         if (!htmlContent.includes('<html') && !htmlContent.includes('<!DOCTYPE')) {
-            htmlContent = `<!DOCTYPE html><html><head><title>Resume</title></head><body>${htmlContent}</body></html>`
+            htmlContent = `<!DOCTYPE html><html><head><title>Resume</title><meta charset="UTF-8"></head><body>${htmlContent}</body></html>`
+        }
+
+        console.log("HTML content length:", htmlContent.length)
+        console.log("HTML preview:", htmlContent.substring(0, 200) + "...")
+
+        // Try to parse the HTML to make sure it's valid
+        try {
+            // Simple validation - check if it has basic HTML structure
+            if (!htmlContent.includes('<body') && !htmlContent.includes('<html')) {
+                console.warn("HTML seems malformed, using fallback")
+                throw new Error("HTML structure invalid")
+            }
+        } catch (htmlError) {
+            console.warn("HTML validation failed, using fallback:", htmlError.message)
+            htmlContent = generateFallbackResumeHtml({resume, selfDescription, jobDescription})
         }
 
         console.log("HTML validated, converting to PDF...")
-        return await generatePdfFromHtml(htmlContent)
+        // First try with the generated HTML
+        try {
+            return await generatePdfFromHtml(htmlContent)
+        } catch (pdfError) {
+            console.error("PDF generation failed with AI HTML, trying with fallback HTML:", pdfError.message)
+            // If AI HTML fails, use fallback HTML
+            const fallbackHtml = generateFallbackResumeHtml({resume, selfDescription, jobDescription})
+            return await generatePdfFromHtml(fallbackHtml)
+        }
     } catch (error) {
         console.error("generateResumePdf error:", error.message)
         console.log("Falling back to template HTML...")
         // Fallback to template HTML
         const fallbackHtml = generateFallbackResumeHtml({resume, selfDescription, jobDescription})
+        console.log("Fallback HTML generated, length:", fallbackHtml.length)
         try {
             return await generatePdfFromHtml(fallbackHtml)
         } catch (pdfError) {
@@ -736,8 +774,18 @@ async function generatePdfFromHtml(htmlContent){
                 "--disable-features=VizDisplayCompositor"
             ]
         })
-        console.log("Browser launched, creating page...")
+
+        if (!browser) {
+            throw new Error("Failed to launch browser")
+        }
+
+        console.log("Browser launched successfully, creating page...")
         const page = await browser.newPage()
+
+        if (!page) {
+            await browser.close()
+            throw new Error("Failed to create page")
+        }
 
         // Set viewport for better PDF rendering
         await page.setViewport({ width: 1200, height: 800 })
@@ -754,24 +802,58 @@ async function generatePdfFromHtml(htmlContent){
         })
 
         console.log("Waiting for content to load...")
-        await page.waitForTimeout(2000) // Give extra time for rendering
+        await new Promise(resolve => setTimeout(resolve, 3000)) // Give extra time for rendering
+
+        // Check if page has content
+        const bodyContent = await page.evaluate(() => {
+            const body = document.body
+            return {
+                textLength: body.innerText.length,
+                hasContent: body.innerText.trim().length > 0,
+                htmlLength: body.innerHTML.length
+            }
+        })
+
+        console.log("Page content check:", bodyContent)
+
+        if (!bodyContent.hasContent || bodyContent.textLength < 10) {
+            await browser.close()
+            throw new Error("Page has no visible content after loading")
+        }
 
         console.log("Generating PDF...")
         const pdfBuffer = await page.pdf({
             format: "A4",
             printBackground: true,
             margin: {
-                top: "20px",
-                bottom: "20px",
-                left: "20px",
-                right: "20px"
-            },
-            preferCSSPageSize: false,
-            displayHeaderFooter: false
+                top: "1cm",
+                bottom: "1cm",
+                left: "1cm",
+                right: "1cm"
+            }
         })
 
         console.log("PDF generated successfully, closing browser...")
         await browser.close()
+
+        // Validate PDF buffer
+        if (!pdfBuffer || pdfBuffer.length === 0) {
+            throw new Error("Generated PDF buffer is empty")
+        }
+
+        console.log(`PDF buffer size: ${pdfBuffer.length} bytes`)
+
+        // Check if PDF starts with %PDF-
+        const pdfHeader = pdfBuffer.toString('ascii', 0, 5)
+        console.log("PDF header:", pdfHeader)
+        if (!pdfHeader.startsWith('%PDF-')) {
+            console.error("Generated PDF does not have valid PDF header")
+            // Log first 100 bytes for debugging
+            console.error("First 100 bytes:", pdfBuffer.toString('hex', 0, 100))
+            console.error("First 100 bytes as text:", pdfBuffer.toString('ascii', 0, 100))
+            throw new Error("Generated PDF is not valid")
+        }
+
         return pdfBuffer
     } catch (error) {
         console.error("generatePdfFromHtml error:", error.message)

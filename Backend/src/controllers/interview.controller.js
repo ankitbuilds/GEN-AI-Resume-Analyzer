@@ -109,9 +109,16 @@ async function generateResumePdfController(req,res){
 
         const {resume, jobDescription, selfDescription} = interviewReport
 
+        console.log("Resume data lengths - resume:", (resume || '').length, "jobDesc:", (jobDescription || '').length, "selfDesc:", (selfDescription || '').length)
+        console.log("Resume preview:", (resume || '').substring(0, 100))
+        console.log("Job desc preview:", (jobDescription || '').substring(0, 100))
+        console.log("Self desc preview:", (selfDescription || '').substring(0, 100))
+
+        console.log("Starting PDF generation for interview report:", interviewReportId)
         let pdfBuffer;
         try {
             pdfBuffer = await generateResumePdf({resume, selfDescription, jobDescription})
+            console.log("PDF generation completed successfully, buffer size:", pdfBuffer ? pdfBuffer.length : 'null')
         } catch (error) {
             console.error("All PDF generation failed, returning HTML as fallback:", error.message)
             // Final fallback: Return HTML content as downloadable file
@@ -124,14 +131,33 @@ async function generateResumePdfController(req,res){
             return res.send(htmlContent)
         }
 
+        // Validate PDF buffer before sending
+        if (!pdfBuffer || pdfBuffer.length === 0) {
+            console.error("PDF buffer is empty or null")
+            return res.status(500).json({
+                message: "Generated PDF is empty"
+            })
+        }
+
+        console.log(`Sending PDF response with ${pdfBuffer.length} bytes`)
         res.set({
             "Content-Type": "application/pdf",
-            "Content-Disposition": `attachment; filename=resume_${interviewReportId}.pdf`
+            "Content-Disposition": `attachment; filename="resume_${interviewReportId}.pdf"`,
+            "Content-Length": pdfBuffer.length,
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0"
         })
-
+        // Ensure response is sent properly
         res.send(pdfBuffer)
+        console.log("PDF response sent successfully")
+
+        // Ensure response is sent properly
+        res.send(pdfBuffer)
+        console.log("PDF response sent successfully")
     } catch (error) {
         console.error("Error generating resume PDF:", error)
+        // Send error response
         res.status(500).json({
             message: "Error generating resume PDF",
             error: error.message
