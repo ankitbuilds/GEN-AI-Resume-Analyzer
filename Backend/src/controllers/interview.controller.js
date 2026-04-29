@@ -148,11 +148,7 @@ async function generateResumePdfController(req,res){
             "Pragma": "no-cache",
             "Expires": "0"
         })
-        // Ensure response is sent properly
-        res.send(pdfBuffer)
-        console.log("PDF response sent successfully")
-
-        // Ensure response is sent properly
+        // Send PDF once
         res.send(pdfBuffer)
         console.log("PDF response sent successfully")
     } catch (error) {
