@@ -108,66 +108,74 @@ app.get("/api/test-simple-pdf", async (req, res) => {
     }
 })
 
-// Test route for resume PDF generation
-app.get('/api/test-resume-pdf', async (req, res) => {
+// Test route for actual resume PDF generation with sample data
+app.get('/api/test-actual-resume-pdf', async (req, res) => {
     try {
-        const testResumeHtml = `
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Test Resume</title>
-                <style>
-                    body { font-family: Arial, sans-serif; margin: 20px; }
-                    h1 { color: #333; }
-                    .section { margin-bottom: 20px; }
-                </style>
-            </head>
-            <body>
-                <h1>Test Resume</h1>
-                <div class="section">
-                    <h2>John Doe</h2>
-                    <p>Email: john@example.com | Phone: (123) 456-7890</p>
-                </div>
-                <div class="section">
-                    <h3>Experience</h3>
-                    <p>Software Developer at Test Company</p>
-                    <p>Developed test applications and fixed bugs.</p>
-                </div>
-                <div class="section">
-                    <h3>Skills</h3>
-                    <ul>
-                        <li>JavaScript</li>
-                        <li>React</li>
-                        <li>Node.js</li>
-                    </ul>
-                </div>
-            </body>
-            </html>
-        `
+        const { generateResumePdf } = require("./services/ai.service")
+
+        // Sample data that might cause issues
+        const testData = {
+            resume: "Software Developer with 5 years experience",
+            selfDescription: "I am a developer",
+            jobDescription: "Looking for developer"
+        }
+
+        console.log("Testing actual resume PDF generation with sample data...")
+        const pdfBuffer = await generateResumePdf(testData)
+
+        console.log("Test resume PDF generated successfully, size:", pdfBuffer.length)
+        res.setHeader('Content-Type', 'application/pdf')
+        res.setHeader('Content-Disposition', 'attachment; filename="test-actual-resume.pdf"')
+        res.send(pdfBuffer)
+    } catch (error) {
+        console.error("Error in test actual resume PDF generation:", error)
+        res.status(500).json({ error: error.message, stack: error.stack })
+    }
+})
+
+// Test route using exact same code as working simple PDF
+app.get('/api/test-resume-simple-way', async (req, res) => {
+    try {
+        const puppeteer = require("puppeteer")
+        console.log("Testing resume PDF with simple method...")
 
         const browser = await puppeteer.launch({
             headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
+            args: ["--no-sandbox", "--disable-setuid-sandbox"]
         })
 
         const page = await browser.newPage()
-        await page.setContent(testResumeHtml, { waitUntil: 'networkidle0' })
+        await page.setContent(`
+            <!DOCTYPE html>
+            <html>
+            <head><title>Resume Test</title></head>
+            <body><h1>Resume Test</h1><p>This is a resume PDF test.</p></body>
+            </html>
+        `, { waitUntil: "networkidle0" })
+
+        // Wait for content to load
+        await new Promise(resolve => setTimeout(resolve, 1000))
 
         const pdfBuffer = await page.pdf({
-            format: 'A4',
+            format: "A4",
             printBackground: true,
-            margin: { top: '20px', right: '20px', bottom: '20px', left: '20px' }
+            margin: {
+                top: "1cm",
+                bottom: "1cm",
+                left: "1cm",
+                right: "1cm"
+            }
         })
 
         await browser.close()
 
-        console.log("Test resume PDF generated successfully, size:", pdfBuffer.length)
+        console.log("Resume test PDF generated successfully, size:", pdfBuffer.length)
         res.setHeader('Content-Type', 'application/pdf')
-        res.setHeader('Content-Disposition', 'attachment; filename="test-resume.pdf"')
+        res.setHeader('Content-Disposition', 'attachment; filename="test-resume-simple.pdf"')
         res.send(pdfBuffer)
     } catch (error) {
-        console.error("Error in test resume PDF generation:", error)
-        res.status(500).json({ error: error.message })
+        console.error("Error in resume simple PDF generation:", error)
+        res.status(500).json({ error: error.message, stack: error.stack })
     }
 })
 

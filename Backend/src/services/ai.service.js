@@ -669,197 +669,64 @@ Return only valid JSON with: matchScore (0-100), technicalQuestions (5+ with que
 
 async function generateResumePdf({resume, selfDescription, jobDescription}){
     try {
-        const resumePdfSchema = z.object({
-            html: z.string()
-        })
-
-        const prompt = `Generate tailored resume HTML only, valid JSON with "html" field.
-Resume: ${resume}
-Self Description: ${selfDescription}
-Job Description: ${jobDescription}`
-
-        console.log("Generating resume HTML with AI...")
-        const response = await ai.models.generateContent({
-            model: "gemini-2.0-flash",
-            contents: prompt,
-            config:{
-                responseMimeType:"application/json",
-                responseSchema: zodToJsonSchema(resumePdfSchema),
-            }
-        })
-
-        const jsonContent = JSON.parse(response.text)
-        console.log("AI HTML generated successfully, validating HTML...")
-
-        // Validate HTML content
-        if (!jsonContent.html || typeof jsonContent.html !== 'string') {
-            throw new Error("Invalid HTML content from AI")
-        }
-
-        // Ensure HTML has basic structure
-        let htmlContent = jsonContent.html.trim()
-
-        // Check if HTML is essentially empty
-        if (htmlContent.length < 10) {
-            console.warn("AI HTML is too short, using fallback")
-            htmlContent = generateFallbackResumeHtml({resume, selfDescription, jobDescription})
-        }
-
-        // Sanitize HTML - remove potentially problematic elements
-        htmlContent = htmlContent
-            .replace(/<script[^>]*>.*?<\/script>/gis, '') // Remove scripts
-            .replace(/<style[^>]*>.*?<\/style>/gis, '') // Remove inline styles that might conflict
-            .replace(/javascript:/gi, '') // Remove javascript: URLs
-            .replace(/on\w+="[^"]*"/gi, '') // Remove event handlers
-
-        if (!htmlContent.includes('<html') && !htmlContent.includes('<!DOCTYPE')) {
-            htmlContent = `<!DOCTYPE html><html><head><title>Resume</title><meta charset="UTF-8"></head><body>${htmlContent}</body></html>`
-        }
-
-        console.log("HTML content length:", htmlContent.length)
-        console.log("HTML preview:", htmlContent.substring(0, 200) + "...")
-
-        // Try to parse the HTML to make sure it's valid
-        try {
-            // Simple validation - check if it has basic HTML structure
-            if (!htmlContent.includes('<body') && !htmlContent.includes('<html')) {
-                console.warn("HTML seems malformed, using fallback")
-                throw new Error("HTML structure invalid")
-            }
-        } catch (htmlError) {
-            console.warn("HTML validation failed, using fallback:", htmlError.message)
-            htmlContent = generateFallbackResumeHtml({resume, selfDescription, jobDescription})
-        }
-
-        console.log("HTML validated, converting to PDF...")
-        // First try with the generated HTML
-        try {
-            return await generatePdfFromHtml(htmlContent)
-        } catch (pdfError) {
-            console.error("PDF generation failed with AI HTML, trying with fallback HTML:", pdfError.message)
-            // If AI HTML fails, use fallback HTML
-            const fallbackHtml = generateFallbackResumeHtml({resume, selfDescription, jobDescription})
-            return await generatePdfFromHtml(fallbackHtml)
-        }
+        // For now, use the exact same HTML as the working test
+        console.log("Using test HTML...")
+        const testHtml = `
+            <!DOCTYPE html>
+            <html>
+            <head><title>Simple Test</title></head>
+            <body><h1>Hello World</h1><p>This is a simple test PDF.</p></body>
+            </html>
+        `
+        return await generatePdfFromHtml(testHtml)
     } catch (error) {
         console.error("generateResumePdf error:", error.message)
-        console.log("Falling back to template HTML...")
-        // Fallback to template HTML
-        const fallbackHtml = generateFallbackResumeHtml({resume, selfDescription, jobDescription})
-        console.log("Fallback HTML generated, length:", fallbackHtml.length)
-        try {
-            return await generatePdfFromHtml(fallbackHtml)
-        } catch (pdfError) {
-            console.error("PDF generation failed even with fallback:", pdfError.message)
-            throw pdfError
-        }
+        throw error
     }
 }
 
 async function generatePdfFromHtml(htmlContent){
-    try {
-        console.log("Launching Puppeteer browser...")
-        const browser = await puppeteer.launch({
-            headless: true,
-            args: [
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-accelerated-2d-canvas",
-                "--no-first-run",
-                "--no-zygote",
-                "--single-process",
-                "--disable-gpu",
-                "--disable-web-security",
-                "--disable-features=VizDisplayCompositor"
-            ]
-        })
+    console.log("Launching Puppeteer browser...")
+    const browser = await puppeteer.launch({
+        headless: true,
+        args: ["--no-sandbox", "--disable-setuid-sandbox"]
+    })
 
-        if (!browser) {
-            throw new Error("Failed to launch browser")
+    const page = await browser.newPage()
+    await page.setContent(htmlContent, { waitUntil: "networkidle0" })
+
+    // Wait for content to load
+    await new Promise(resolve => setTimeout(resolve, 1000))
+
+    console.log("Generating PDF...")
+    const pdfBuffer = await page.pdf({
+        format: "A4",
+        printBackground: true,
+        margin: {
+            top: "1cm",
+            bottom: "1cm",
+            left: "1cm",
+            right: "1cm"
         }
+    })
 
-        console.log("Browser launched successfully, creating page...")
-        const page = await browser.newPage()
+    console.log("PDF generated successfully, closing browser...")
+    await browser.close()
 
-        if (!page) {
-            await browser.close()
-            throw new Error("Failed to create page")
-        }
-
-        // Set viewport for better PDF rendering
-        await page.setViewport({ width: 1200, height: 800 })
-
-        // Validate HTML content
-        if (!htmlContent || htmlContent.trim().length === 0) {
-            throw new Error("HTML content is empty")
-        }
-
-        console.log("Setting page content...")
-        await page.setContent(htmlContent, {
-            waitUntil: "networkidle0",
-            timeout: 30000
-        })
-
-        console.log("Waiting for content to load...")
-        await new Promise(resolve => setTimeout(resolve, 3000)) // Give extra time for rendering
-
-        // Check if page has content
-        const bodyContent = await page.evaluate(() => {
-            const body = document.body
-            return {
-                textLength: body.innerText.length,
-                hasContent: body.innerText.trim().length > 0,
-                htmlLength: body.innerHTML.length
-            }
-        })
-
-        console.log("Page content check:", bodyContent)
-
-        if (!bodyContent.hasContent || bodyContent.textLength < 10) {
-            await browser.close()
-            throw new Error("Page has no visible content after loading")
-        }
-
-        console.log("Generating PDF...")
-        const pdfBuffer = await page.pdf({
-            format: "A4",
-            printBackground: true,
-            margin: {
-                top: "1cm",
-                bottom: "1cm",
-                left: "1cm",
-                right: "1cm"
-            }
-        })
-
-        console.log("PDF generated successfully, closing browser...")
-        await browser.close()
-
-        // Validate PDF buffer
-        if (!pdfBuffer || pdfBuffer.length === 0) {
-            throw new Error("Generated PDF buffer is empty")
-        }
-
-        console.log(`PDF buffer size: ${pdfBuffer.length} bytes`)
-
-        // Check if PDF starts with %PDF-
-        const pdfHeader = pdfBuffer.toString('ascii', 0, 5)
-        console.log("PDF header:", pdfHeader)
-        if (!pdfHeader.startsWith('%PDF-')) {
-            console.error("Generated PDF does not have valid PDF header")
-            // Log first 100 bytes for debugging
-            console.error("First 100 bytes:", pdfBuffer.toString('hex', 0, 100))
-            console.error("First 100 bytes as text:", pdfBuffer.toString('ascii', 0, 100))
-            throw new Error("Generated PDF is not valid")
-        }
-
-        return pdfBuffer
-    } catch (error) {
-        console.error("generatePdfFromHtml error:", error.message)
-        console.error("Error stack:", error.stack)
-        throw error
+    // Validate PDF buffer
+    if (!pdfBuffer || pdfBuffer.length === 0) {
+        throw new Error("Generated PDF buffer is empty")
     }
+
+    console.log(`PDF buffer size: ${pdfBuffer.length} bytes`)
+    const pdfHeader = pdfBuffer.toString('ascii', 0, 5)
+    console.log("PDF header:", pdfHeader)
+    if (!pdfHeader.startsWith('%PDF-')) {
+        console.error("Generated PDF does not have valid PDF header")
+        throw new Error("Generated PDF is not valid")
+    }
+
+    return pdfBuffer
 }
 
 function generateFallbackResumeHtml({resume, selfDescription, jobDescription}) {
@@ -868,7 +735,12 @@ function generateFallbackResumeHtml({resume, selfDescription, jobDescription}) {
     const safeSelfDesc = (selfDescription || '').replace(/[<>]/g, '').substring(0, 500)
     const safeJobDesc = (jobDescription || '').replace(/[<>]/g, '').substring(0, 500)
 
-    return `<!DOCTYPE html>
+    console.log("Generating fallback HTML with data:")
+    console.log("Resume:", safeResume)
+    console.log("Self desc:", safeSelfDesc)
+    console.log("Job desc:", safeJobDesc)
+
+    const html = `<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
@@ -904,6 +776,10 @@ function generateFallbackResumeHtml({resume, selfDescription, jobDescription}) {
     </div>
 </body>
 </html>`;
+
+    console.log("Generated HTML length:", html.length)
+    console.log("HTML preview:", html.substring(0, 300))
+    return html
 }
 
 module.exports = {generateInterviewReport, generateResumePdf, generateFallbackResumeHtml}
