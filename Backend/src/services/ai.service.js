@@ -669,16 +669,8 @@ Return only valid JSON with: matchScore (0-100), technicalQuestions (5+ with que
 
 async function generateResumePdf({resume, selfDescription, jobDescription}){
     try {
-        // For now, use the exact same HTML as the working test
-        console.log("Using test HTML...")
-        const testHtml = `
-            <!DOCTYPE html>
-            <html>
-            <head><title>Simple Test</title></head>
-            <body><h1>Hello World</h1><p>This is a simple test PDF.</p></body>
-            </html>
-        `
-        return await generatePdfFromHtml(testHtml)
+        const html = generateFallbackResumeHtml({resume, selfDescription, jobDescription})
+        return await generatePdfFromHtml(html)
     } catch (error) {
         console.error("generateResumePdf error:", error.message)
         throw error
@@ -687,46 +679,74 @@ async function generateResumePdf({resume, selfDescription, jobDescription}){
 
 async function generatePdfFromHtml(htmlContent){
     console.log("Launching Puppeteer browser...")
-    const browser = await puppeteer.launch({
-        headless: true,
-        args: ["--no-sandbox", "--disable-setuid-sandbox"]
+    const launchOptions = {
+        headless: 'new',
+        args: [
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+            "--single-process",
+            "--disable-extensions",
+            "--disable-background-networking",
+            "--disable-background-timer-throttling",
+            "--disable-client-side-phishing-detection",
+            "--disable-default-apps",
+            "--disable-popup-blocking"
+        ],
+        defaultViewport: { width: 1200, height: 800 }
+    }
+
+    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+        launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH
+    } else if (process.env.CHROME_PATH) {
+        launchOptions.executablePath = process.env.CHROME_PATH
+    }
+
+    console.log("Puppeteer launch options:", {
+        headless: launchOptions.headless,
+        executablePath: launchOptions.executablePath,
+        args: launchOptions.args.slice(0, 5)
     })
 
-    const page = await browser.newPage()
-    await page.setContent(htmlContent, { waitUntil: "networkidle0" })
+    const browser = await puppeteer.launch(launchOptions)
+    try {
+        const page = await browser.newPage()
+        await page.setContent(htmlContent, { waitUntil: "networkidle0" })
 
-    // Wait for content to load
-    await new Promise(resolve => setTimeout(resolve, 1000))
+        await new Promise(resolve => setTimeout(resolve, 1000))
 
-    console.log("Generating PDF...")
-    const pdfBuffer = await page.pdf({
-        format: "A4",
-        printBackground: true,
-        margin: {
-            top: "1cm",
-            bottom: "1cm",
-            left: "1cm",
-            right: "1cm"
+        console.log("Generating PDF...")
+        const pdfBuffer = await page.pdf({
+            format: "A4",
+            printBackground: true,
+            margin: {
+                top: "1cm",
+                bottom: "1cm",
+                left: "1cm",
+                right: "1cm"
+            }
+        })
+
+        // Validate PDF buffer
+        if (!pdfBuffer || pdfBuffer.length === 0) {
+            throw new Error("Generated PDF buffer is empty")
         }
-    })
 
-    console.log("PDF generated successfully, closing browser...")
-    await browser.close()
+        console.log(`PDF buffer size: ${pdfBuffer.length} bytes`)
+        const pdfHeader = pdfBuffer.toString('ascii', 0, 5)
+        console.log("PDF header:", pdfHeader)
+        if (!pdfHeader.startsWith('%PDF-')) {
+            console.error("Generated PDF does not have valid PDF header")
+            throw new Error("Generated PDF is not valid")
+        }
 
-    // Validate PDF buffer
-    if (!pdfBuffer || pdfBuffer.length === 0) {
-        throw new Error("Generated PDF buffer is empty")
+        return pdfBuffer
+    } finally {
+        await browser.close().catch(err => {
+            console.error("Error closing Puppeteer browser:", err.message)
+        })
     }
-
-    console.log(`PDF buffer size: ${pdfBuffer.length} bytes`)
-    const pdfHeader = pdfBuffer.toString('ascii', 0, 5)
-    console.log("PDF header:", pdfHeader)
-    if (!pdfHeader.startsWith('%PDF-')) {
-        console.error("Generated PDF does not have valid PDF header")
-        throw new Error("Generated PDF is not valid")
-    }
-
-    return pdfBuffer
 }
 
 function generateFallbackResumeHtml({resume, selfDescription, jobDescription}) {
