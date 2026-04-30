@@ -669,13 +669,60 @@ Return only valid JSON with: matchScore (0-100), technicalQuestions (5+ with que
 
 async function generateResumePdf({resume, selfDescription, jobDescription}){
     try {
+        console.log("Starting resume tailoring based on job description...")
+        let tailoredResume = resume
+        
+        // Tailor the resume to the job description using AI
+        if (jobDescription && resume) {
+            tailoredResume = await tailorResumeToJobDescription(resume, jobDescription, selfDescription)
+        }
+        
         console.log("Starting PDF generation with PDFKit...")
-        const pdfBuffer = await generatePdfWithPdfkit({resume, selfDescription, jobDescription})
+        const pdfBuffer = await generatePdfWithPdfkit({resume: tailoredResume, selfDescription, jobDescription})
         console.log("PDF generation completed, buffer size:", pdfBuffer.length)
         return pdfBuffer
     } catch (error) {
         console.error("generateResumePdf error:", error.message)
         throw error
+    }
+}
+
+async function tailorResumeToJobDescription(resume, jobDescription, selfDescription) {
+    try {
+        const tailoringPrompt = `You are an expert resume writer. Tailor the provided resume to better match the job description. 
+
+IMPORTANT RULES:
+1. Keep the resume authentic and truthful - do NOT make up experience
+2. Reorder and reorganize content to emphasize skills matching the job
+3. Rewrite bullet points to use keywords from the job description where relevant
+4. Highlight achievements and skills that directly match job requirements
+5. Remove or de-emphasize less relevant experience
+6. Keep the same resume structure with sections like Education, Experience, Skills, etc.
+7. Maintain all original content but reorganize and rephrase it strategically
+
+JOB DESCRIPTION:
+${jobDescription}
+
+CURRENT RESUME:
+${resume}
+
+SELF DESCRIPTION:
+${selfDescription || "No additional self description provided"}
+
+Return ONLY the tailored resume text with the same structure. Do not include any explanations or metadata.`
+
+        const response = await ai.models.generateContent({
+            model: "gemini-2.0-flash",
+            contents: tailoringPrompt
+        })
+        
+        const tailoredContent = response.text.trim()
+        console.log("Resume tailored successfully, new length:", tailoredContent.length)
+        return tailoredContent
+    } catch (error) {
+        console.error("Resume tailoring error:", error.message)
+        console.log("Using original resume due to tailoring error")
+        return resume // Fallback to original resume if tailoring fails
     }
 }
 
