@@ -22,18 +22,34 @@ export const useAuth = () => {
         }
     }
 
-    const handleRegister = async ({ username, email, password }) => {
-        setLoading(true)
-        try {
-            const data = await register({ username, email, password })
-            setUser(data.user)
-        } catch (err) {
-            console.error("Registration error:", err)
-        }
-        finally {
-            setLoading(false)
-        }
+    // const handleRegister = async ({ username, email, password }) => {
+    //     setLoading(true)
+    //     try {
+    //         const data = await register({ username, email, password })
+    //         setUser(data.user)
+    //     } catch (err) {
+    //         console.error("Registration error:", err)
+    //     }
+    //     finally {
+    //         setLoading(false)
+    //     }
+    // }
+
+
+    // useauth.js
+const handleRegister = async ({ username, email, password }) => {
+    setLoading(true)
+    try {
+        const data = await register({ username, email, password })
+        // setUser(data.user)
+        return data
+    } catch (err) {
+        console.error("Registration error:", err)
+        throw err
+    } finally {
+        setLoading(false)
     }
+}
 
     const handleLogout = async () => {
         setLoading(true)
@@ -49,11 +65,13 @@ export const useAuth = () => {
 
     useEffect(()=>{
         const getAndSetUser = async()=>{
+            setLoading(true)
             try{
                 const data= await getMe()
                 setUser(data.user)
             }catch(err){
                 console.error("Get user error:", err)
+                 setUser(null)  
             }
             finally{
                 setLoading(false)

@@ -9,15 +9,30 @@ const Register = () => {
     const [username, setUsername] = useState("")
     const [email, setEmail] = useState("")
     const [password, setPassword] = useState("")
+    const [error, setError] = useState("")
 
     const { loading, handleRegister } = useAuth()
 
 
-    const handleSubmit = async (e) => {
-        e.preventDefault()
+    // const handleSubmit = async (e) => {
+    //     e.preventDefault()
+    //     await handleRegister({ username, email, password })
+    //     navigate("/")
+    // }
+
+    // register.jsx
+
+
+const handleSubmit = async (e) => {
+    e.preventDefault()
+    setError("")
+    try {
         await handleRegister({ username, email, password })
-        navigate("/")
+        navigate("/login")
+    } catch (err) {
+        setError(err.response?.data?.message || "Registration failed. Please try again.")
     }
+}
     if (loading) {
         return (<main><h1>Loading....</h1></main>)
     }

@@ -8,14 +8,32 @@ app.use(express.json())
 app.use(cookieParser())
 
 // CORS configuration for both development and production
+// const allowedOrigins = [
+//     "http://localhost:5173",           // Local development
+//     process.env.FRONTEND_URL,          // Render or other deployment URL
+//     "https://gen-ai-resume-analyzer.onrender.com" // Default Render domain (replace with your actual domain)
+// ].filter(origin => origin) // Remove undefined entries
+
+// app.use(cors({
+//     origin: allowedOrigins,
+//     credentials: true
+// }))
+
 const allowedOrigins = [
-    "http://localhost:5173",           // Local development
-    process.env.FRONTEND_URL,          // Render or other deployment URL
-    "https://gen-ai-resume-analyzer.onrender.com" // Default Render domain (replace with your actual domain)
-].filter(origin => origin) // Remove undefined entries
+    "http://localhost:5173",
+    "http://localhost:5174",
+    process.env.FRONTEND_URL,
+    "https://gen-ai-resume-analyzer.onrender.com"
+].filter(Boolean)
 
 app.use(cors({
-    origin: allowedOrigins,
+    origin: function (origin, callback) {
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true)
+        } else {
+            callback(new Error("Not allowed by CORS"))
+        }
+    },
     credentials: true
 }))
 
@@ -76,4 +94,4 @@ app.get("/api/test-html-validation", async (req, res) => {
     }
 })
 
-module.exports = app
+module.exports = app

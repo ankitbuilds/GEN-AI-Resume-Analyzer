@@ -54,7 +54,8 @@ export async function getMe() {
         })
         return response.data;
 
-    } catch (err) {
+    } 
+    catch (err) {
         console.log(err);
     }
 
