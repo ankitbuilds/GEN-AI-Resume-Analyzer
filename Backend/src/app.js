@@ -94,4 +94,27 @@ app.get("/api/test-html-validation", async (req, res) => {
     }
 })
 
+
+// multer error handling
+const multer = require("multer")
+
+app.use((err, req, res, next) => {
+    console.error("Unhandled error:", err)
+
+    if (err instanceof multer.MulterError) {
+        if (err.code === "LIMIT_FILE_SIZE") {
+            return res.status(400).json({ message: "Resume file is too large. Max size is 5MB." })
+        }
+        return res.status(400).json({ message: `Upload error: ${err.message}` })
+    }
+
+    if (err.message === "Not allowed by CORS") {
+        return res.status(403).json({ message: "CORS: origin not allowed" })
+    }
+
+    res.status(500).json({ message: "Internal server error", error: err.message })
+})
+
+
+
 module.exports = app
