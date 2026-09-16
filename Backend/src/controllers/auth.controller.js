@@ -3,63 +3,6 @@ const bcrypt = require("bcryptjs")
 const jwt = require("jsonwebtoken")
 const tokenBlacklistModel = require("../models/blacklist.model")
 
-// async function registerUserController(req, res) {
-//     const { username, email, password } = req.body
-
-//     if (!username || !email || !password) {
-//         return res.status(400).json({
-//             message: "please provide username, email and password"
-//         })
-//     }
-
-//     const isUserAlreadyExists = await userModel.findOne({
-//         $or: [{ username }, { email }]
-//     })
-
-//     if (isUserAlreadyExists) {
-//         return res.status(400).json({
-//             message: "Account already exists with this email address or username"
-//         })
-//     }
-
-//     const hash = await bcrypt.hash(password, 10)
-
-//     const user = await userModel.create({
-//         username,
-//         email,
-//         password: hash
-//     })
-
-//     const token = jwt.sign(
-//         { id: user._id, username: user.username },
-//         process.env.JWT_SECRET,
-//         { expiresIn: "1d" }
-//     )
-
-//     // res.cookie("token", token, {
-//     //     httpOnly: true,
-//     //     sameSite: "none",
-//     //     secure: process.env.NODE_ENV === "production",
-//     //     maxAge: 24 * 60 * 60 * 1000
-//     // })
-//     res.cookie("token", token, {
-//     httpOnly: true,
-//     sameSite: "lax",
-//     secure: false,
-//     maxAge: 24 * 60 * 60 * 1000
-// })
-
-//     res.status(201).json({
-//         message: "User registered successfully",
-//         user: {
-//             id: user._id,
-//             username: user.username,
-//             email: user.email
-//         }
-//     })
-// }
-
-
 async function registerUserController(req, res) {
     const { username, email, password } = req.body
 
@@ -69,8 +12,10 @@ async function registerUserController(req, res) {
         })
     }
 
+    const normalizedEmail = email.toLowerCase().trim()
+
     const isUserAlreadyExists = await userModel.findOne({
-        $or: [{ username }, { email }]
+        $or: [{ username }, { email: normalizedEmail }]
     })
 
     if (isUserAlreadyExists) {
@@ -83,25 +28,11 @@ async function registerUserController(req, res) {
 
     const user = await userModel.create({
         username,
-        email,
+        email: normalizedEmail,
         password: hash
     })
 
-    const token = jwt.sign(
-        { id: user._id, username: user.username },
-        process.env.JWT_SECRET,
-        { expiresIn: "1d" }
-    )
-
-    const isProd = process.env.NODE_ENV === "production"
-
-    res.cookie("token", token, {
-        httpOnly: true,
-        sameSite: isProd ? "none" : "lax",
-        secure: isProd,
-        maxAge: 24 * 60 * 60 * 1000
-    })
-
+    // Registration does NOT auto-login the user.
     res.status(201).json({
         message: "User registered successfully",
         user: {
@@ -115,7 +46,14 @@ async function registerUserController(req, res) {
 async function loginUserController(req, res) {
     const { email, password } = req.body
 
-    const user = await userModel.findOne({ email })
+    if (!email || !password) {
+        return res.status(400).json({
+            message: "please provide email and password"
+        })
+    }
+
+    const normalizedEmail = email.toLowerCase().trim()
+    const user = await userModel.findOne({ email: normalizedEmail })
 
     if (!user) {
         return res.status(400).json({
@@ -136,59 +74,40 @@ async function loginUserController(req, res) {
         { expiresIn: "1d" }
     )
 
-    // res.cookie("token", token, {
-    //     httpOnly: true,
-    //     sameSite: "none",
-    //     secure: process.env.NODE_ENV === "production",
-    //     maxAge: 24 * 60 * 60 * 1000
-    // })
-    const isProd = process.env.NODE_ENV === "production"
-
-const cookieOptions = {
-    httpOnly: true,
-    sameSite: isProd ? "none" : "lax",
-    secure: isProd,
-    maxAge: 24 * 60 * 60 * 1000
-}
-
-res.cookie("token", token, cookieOptions)
+    // Token is returned in the response body, not set as a cookie.
     res.status(200).json({
         message: "User logedIn successfully",
+        token,
         user: {
             id: user._id,
             username: user.username,
             email: user.email
-
         }
     })
-
 }
 
 async function logoutUserController(req, res) {
-    const token = req.cookies.token
+    // Token now comes from the Authorization header, added by authUser middleware
+    const authHeader = req.headers.authorization
+    const token = authHeader && authHeader.startsWith("Bearer ") ? authHeader.split(" ")[1] : null
+
     if (token) {
         await tokenBlacklistModel.create({ token })
     }
-     const isProd = process.env.NODE_ENV === "production"
-    // res.clearCookie("token", {
-    //     httpOnly: true,
-    //     sameSite: "none",
-    //     secure: process.env.NODE_ENV === "production"
-    // })
-   res.clearCookie("token", {
-    httpOnly: true,
-    sameSite: isProd ? "none" : "lax",
-    secure: isProd
-})
 
     res.status(200).json({
         message: "user logged out successfully"
-
     })
 }
 
 async function getMeController(req, res) {
     const user = await userModel.findById(req.user.id)
+
+    if (!user) {
+        return res.status(404).json({
+            message: "User not found"
+        })
+    }
 
     res.status(200).json({
         message: "user detailed fetch successfully",
